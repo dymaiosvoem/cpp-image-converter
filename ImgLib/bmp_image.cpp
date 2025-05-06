@@ -65,59 +65,78 @@ static int GetBMPStride(int w) {
 
 bool SaveBMP(const Path& file, const Image& image) {
     ofstream ofs(file, ios::binary);
-    if (!ofs) return false;
 
-    int height = image.GetHeight();
-    int width = image.GetWidth();    
-    if (height <= 0 || width <= 0) return false; 
-    int bmp_stride = GetBMPStride(width);
+    if (!ofs) {
+        return false;
+    }
+
+    const int height = image.GetHeight();
+    const int width = image.GetWidth();
+
+    if (height <= 0 || width <= 0) {
+        return false;
+    }
+
+    const int bmp_stride = GetBMPStride(width);
+    const int header_size = sizeof(BitmapFileHeader) + sizeof(BitmapInfoHeader);
 
     BitmapFileHeader bitmap_file_header;
-    bitmap_file_header.padding = sizeof(BitmapFileHeader) + sizeof(BitmapInfoHeader);
-    bitmap_file_header.header_summary =  bitmap_file_header.padding + bmp_stride * height;
-    ofs.write(reinterpret_cast<char*>(&bitmap_file_header), sizeof(BitmapFileHeader));
+    bitmap_file_header.padding = header_size;
+    bitmap_file_header.header_summary =  header_size + bmp_stride * height;
     
     BitmapInfoHeader bitmap_info_header;
     bitmap_info_header.image_width = width;
     bitmap_info_header.image_height = height;
-    bitmap_info_header.bytes_in_data = bmp_stride * height;    
+    bitmap_info_header.bytes_in_data = bmp_stride * height; 
+    
+    ofs.write(reinterpret_cast<char*>(&bitmap_file_header), sizeof(BitmapFileHeader));
     ofs.write(reinterpret_cast<char*>(&bitmap_info_header), sizeof(BitmapInfoHeader));
     
     vector<char> buffer(bmp_stride);
-    for (int y = height - 1; y >= 0; y--) {
+
+    for (int y = height - 1; y >= 0; --y) {
         const Color* line = image.GetLine(y);
+
         for (int x = 0; x < width; ++x) {
             buffer[x * 3 + 0] = static_cast<char>(line[x].b);
             buffer[x * 3 + 1] = static_cast<char>(line[x].g);
             buffer[x * 3 + 2] = static_cast<char>(line[x].r);
         }
+
         ofs.write(buffer.data(), bmp_stride);
     }
 
-    ofs.close();
-    return true;
+    return ofs.good();
 }
 
 Image LoadBMP(const Path& file) {
     ifstream ifs(file, ios::binary);
-    if (!ifs) return {};
+    
+    if (!ifs) {
+        return {};
+    }
 
     BitmapFileHeader bitmap_file_header;
     ifs.read(reinterpret_cast<char*>(&bitmap_file_header), sizeof(BitmapFileHeader));
-    if (bitmap_file_header.signature[0] != 'B' || bitmap_file_header.signature[1] != 'M')  return {};
+    if (bitmap_file_header.signature[0] != 'B' || bitmap_file_header.signature[1] != 'M') {
+        return {};
+    }
     
     BitmapInfoHeader bitmap_info_header;
     ifs.read(reinterpret_cast<char*>(&bitmap_info_header), sizeof(BitmapInfoHeader));
 
-    Image result(bitmap_info_header.image_width, bitmap_info_header.image_height, Color::Black());
-    int height = result.GetHeight();
-    int width = result.GetWidth();   
-    int bmp_stride = GetBMPStride(width);
+    const int width = bitmap_info_header.image_width; 
+    const int height = bitmap_info_header.image_height;
+    Image result(width, height, Color::Black());
+    
+    const int bmp_stride = GetBMPStride(width);
 
     vector<char> buffer(bmp_stride);
-    for (int y = height - 1; y >= 0; y--) {
-        auto line = result.GetLine(y);
+
+    for (int y = height - 1; y >= 0; --y) {
+        Color* line = result.GetLine(y);
         ifs.read(buffer.data(), bmp_stride);
+
         for (int x = 0; x < width; ++x) {
             line[x].b = static_cast<byte>(buffer[x * 3 + 0]);
             line[x].g = static_cast<byte>(buffer[x * 3 + 1]);
@@ -125,7 +144,7 @@ Image LoadBMP(const Path& file) {
         }
     }
     
-    return result;
+    return ifs.good() ? result : Image{};
 }
 
 }  // namespace img_lib
